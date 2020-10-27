@@ -1,0 +1,289 @@
+---
+title: "Functional Data Analysis"
+author: "Rafaela Becerra"
+output:
+  html_document:
+    number_sections: yes
+subtitle: Assignment 9
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# Aemet Data
+## Load packages
+
+```{r message=FALSE}
+library(fda)
+library(fda.usc)
+library(corrplot)
+library(kableExtra)
+```
+
+## Load Aemet Data
+## Load data set
+```{r }
+data(aemet)
+data.temp<- t(aemet$temp$data)
+data.wind<- t(aemet$wind.speed$data)
+```
+
+## Function-on-function linear regression to predict the wind speeds with the temperatures.
+
+This case will be adress by the same method as before and taking equal considerations. 
+
+Then the function-on-function of the linear regression will be given by:
+
+$$R(t) =\beta_{0}(t)+\int_{a}^{b} X(s) \beta(t, s) d s+\varepsilon(t)$$
+
+And the parameters will be estimated by the regression on functional principal components method.
+
+First, we have to smooth the data. Considering that in previous assignments we got that the best $K$ was equal to 21, we will perform the smoothing based on this number of fourier basis for the data of the wind speeds and the temperature measures of the Spanish stations.
+
+Fourier basis
+```{r}
+fourier.basis <- create.fourier.basis(rangeval=c(0,365),nbasis=21)
+```
+
+Smooth wind speeds data
+```{r fig.align="center"}
+smooth.data.wind <- smooth.basis(argvals=1:365,y=data.wind,fdParobj=fourier.basis)
+
+plot(smooth.data.wind,
+     lty=1,lwd=2,col="deepskyblue2",
+     main="Smoothing wind speeds data with 21 Fourier basis functions",
+     xlab=  "Daily observations",
+     ylab="Average daily wind speed (m/s)")
+```
+
+Smooth temperature data
+```{r fig.align="center"}
+smooth.data.temp <- smooth.basis(argvals=1:365,y=data.temp,fdParobj=fourier.basis)
+
+plot(smooth.data.temp,
+     lty=1,lwd=2,col="chartreuse3",
+     main="Smoothing temperature data with 21 Fourier basis functions",
+     xlab="Daily observations",
+     ylab="Average temperature (Celsius degrees)")
+```
+
+The next step will be to calculate the sample functional principal components of temperature and wind speeds. The output of the function used generates the *values* of the eigenvalues, the *harmonics* that are the sample eigenfunctions, the *scores* that are the sample functional principal components, the proportion of variance explained by each eigenfunction in *varprop* and the functional mean in *meanfd*. Since the fourier basis are 21, the maximum number of FPCs will be 21 as well. 
+
+```{r}
+pcs.temp <- pca.fd(smooth.data.temp$fd,nharm=21,harmfdPar=fdPar(smooth.data.temp$fd))
+pcs.wind <- pca.fd(smooth.data.wind$fd,nharm=21,harmfdPar=fdPar(smooth.data.wind$fd))
+```
+
+The tables and graphs below give us the eigenvalues and the proportion of variability explained by the FPCs, as the results show, the first FPCs explains more than 86% of the variability of the temperature. Additionally, the two first FPCs explain the 99.27% of the variability, which can be consider a high value.
+ 
+For the wind speed, we can see that the proportional variability explained by the first FPCs is higher than the past case with a value of 93.13%, and the cummulative varibility explained by the first two is equal to 98.77%.
+
+As we can see for both variables the first two components will explain almost all of the variability of the data.
+
+**Temperature eigenvalues and proportion of variability**
+```{r fig.align="center"}
+table.fpcs.temp <- cbind(pcs.temp$values[1:21],pcs.temp$varprop,cumsum(pcs.temp$varprop))
+colnames(table.fpcs.temp) <- c('Eigenvalues', 'Proportion of variability', 'Cummulative prop. var')
+rownames(table.fpcs.temp) <- paste('FPCs',seq(1:21))
+kable(table.fpcs.temp) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+**Wind speeds eigenvalues and proportion of variability**
+```{r fig.align="center"}
+table.fpcs.wind <- cbind(pcs.wind$values[1:21],pcs.wind$varprop,cumsum(pcs.wind$varprop))
+colnames(table.fpcs.wind) <- c('Eigenvalues', 'Proportion of variability', 'Cummulative prop. var')
+rownames(table.fpcs.wind) <- paste('FPCs',seq(1:21))
+kable(table.fpcs.wind) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+
+```
+
+```{r fig.align="center"}
+
+par(mfrow=c(2,2))
+plot(1:21,table.fpcs.temp[,1],
+     pch=19,col="chartreuse3",type="b",
+     main="Sample eigenvalues of temperature",
+     xlab="Number of eigenvalue",ylab="Value")
+
+plot(1:21,table.fpcs.temp[,2],
+     pch=19,col="chartreuse3",type="b",
+     main="Proportion of variability of temperature",
+     xlab="Number of eigenvalue",ylab="Value")
+
+plot(1:21,table.fpcs.wind[,1],
+     pch=19,col="deepskyblue2",type="b",
+     main="Sample eigenvalues of wind speeds  ",
+     xlab="Number of eigenvalue",ylab="Value")
+
+plot(1:21,table.fpcs.wind[,2],
+     pch=19,col="deepskyblue2",type="b",
+     main="Proportion of variability of wind speeds",
+     xlab="Number of eigenvalue",ylab="Value")
+```
+
+
+```{r fig.align="center"}
+par(mfrow=c(2,2))
+
+plot(pcs.temp$harmonics[1],
+     lwd=2,col="chartreuse3",lty=1,
+     main="First FPC of temperature",xlab=  "Daily observations",ylab="Value")
+
+plot(pcs.temp$harmonics[2],
+     lwd=2,col="chartreuse3",lty=1,
+     main="Second FPC of temperature",xlab=  "Daily observations",ylab="Value")
+
+plot(pcs.wind$harmonics[1],
+     lwd=2,col="deepskyblue2",lty=1,
+     main="First FPC of wind speeds  ",xlab=  "Daily observations",ylab="Value")
+
+plot(pcs.wind$harmonics[2],
+     lwd=2,col="deepskyblue2",lty=1,
+     main="Second FPC of wind speeds  ",xlab=  "Daily observations",ylab="Value")
+
+```
+
+The first functional principal component expresses the variability of the data for both cases, considering that for the temperature curves the values rise at the beginning of the year and at the end of it, denoting higher values for winter and autumn. Moreover, for the wind speead, the behavior denotes higher variability during summer and a clear decrease in winter and autumn.  
+
+The second functional principal component appears to be showing the change of the temperatures between summer and winter, since we are seen that the differences increase until reaching the peak of the summer season just around July for both variables. 
+
+Next, we present the association of the functional principal component scores for both variables.
+
+```{r, fig.width=10, fig.height=10}
+temp.scores <- pcs.temp$scores
+prec.scores <- pcs.wind$scores
+pairs(temp.scores,pch=19,col="chartreuse3",main="FPCs scores for temperature")
+pairs(prec.scores,pch=19,col="deepskyblue2",main="FPCs scores for wind speeds")
+```
+
+
+In the case of the temperatures, we can see that the first FPCs is dividing the points into three groups, one denoted by just one observation, a big group in the middle, and a small group at the extreme. Conversely, the second FPCs presents a more uniform distribution of the points. The other FPCs replicate these patterns. 
+
+Recall that the results showed a clear outlier that could be identified for the temperature data set which corresponds to the Navacerrada weather station. These results are expected, considering that Navacerrada is located in the mountains at 1200 mt of altitude and presents a different climate than the rest of the stations taking into account that the weather does not get to higher temperatures throughout the year.
+
+Likewise, for the wind speeds, we can see that some of the FPCs are taking some observations to the extremes, this group is divided into two, one denoted by only one observation far from the rest and a second with more observations near the middle, the final group, which it is the biggest, gets the observations along the rest of the axis.  The second FPCs appear to be separating the observations into three groups as well, but in this case we see that in the extremes lay only one or two observations and in the middle rest the remaining points. 
+
+In previous assignments, we could see that existed functional outliers in the wind data set given by the curves of the average daily wind for the Spanish weather stations of Tarifa, Las Palmas, and Izaña. These results were also expected since they are located in zones closed to the sea and because of this, these locations will be experiencing more wind than other stations turning them into generators of measurements that will be out of the average of the others.
+
+Consequently, for both temperature and wind the tendency of the formation of groups and extreme observations is in concordance with the type of data that we are treating.
+
+Next, we will calculate and plot the correlations among the sample FPC scores of the temperature and wind speed.
+
+```{r fig.align="center"}
+cortable <-cor(pcs.wind$scores,pcs.temp$scores)
+colnames(cortable)<- paste('FPCs temperature',seq(1:21))
+rownames(cortable)<- paste('FPCs wind speeds',seq(1:21))
+kable(cortable, "html") %>%
+  kable_styling()%>%
+  scroll_box(width = "100%", height = "400px")
+
+
+par(mfrow=c(1,1))
+corrplot(cor(pcs.wind$scores,pcs.temp$scores))
+```
+
+As the results show, there are some large correlations among the FPCs of the wind speeds and temperature FPCs sample scores which can indicate that one can be explained by the other.
+
+Next, we will calculate the estimates of the coefficients $b_{mo}$ for $m,o=1,\ldots,21$, for that we will determine the sample covariances between the FPCs of both to test the predictive power of the temperatures over the wind speed. As the results show, the sample covariances corresponding to eigenfunctions of high order are smaller than those corresponding to eigenfunctions of low order.
+
+```{r fig.align="center"}
+cov.scores <- cov(pcs.wind$scores,pcs.temp$scores)
+colnames(cov.scores)<- paste('FPCs temperature',seq(1:21))
+rownames(cov.scores)<- paste('FPCs wind speeds',seq(1:21))
+kable(cov.scores, "html") %>%
+  kable_styling()%>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+
+Moreover, we can assign the cutoffs to be $K_m=2$ and $K_o=21$ for the estimation, considering that the coefficients show to be larger than 0 in the first two eigenfunctions of wind speeds and from the eleven eigenfunction of the temperature registrations.
+
+```{r fig.align="center"}
+b.mo <- cov.scores %*% diag(1/pcs.temp$values)
+colnames(b.mo)<- seq(1:21)
+rownames(b.mo)<- seq(1:21)
+kable(b.mo, "html") %>%
+  kable_styling()%>%
+  scroll_box(width = "100%", height = "400px")
+
+corrplot(b.mo,is.corr=FALSE)
+```
+
+Below, we calculate the estimate bivariate functional slope $\beta(t,s)$ with the results of the eigenfunctions of the covariance operators of $X(s)$ $(\widehat{v}_{o}(s))$.
+
+```{r fig.align="center"}
+K.m <- 2
+K.o <- 21
+beta.est.coefs <- pcs.wind$harmonics$coefs[,1:K.m] %*% b.mo[1:K.m,1:K.o] %*% t(pcs.temp$harmonics$coefs[,1:K.o])
+
+beta.est <- bifd(beta.est.coefs,
+                 sbasisobj=pcs.wind$harmonics$basis,
+                 tbasisobj=pcs.temp$harmonics$basis)
+
+eval.beta.est <- eval.bifd(seq(1,365,length.out=50),seq(1,365,length.out=50),beta.est)
+op <- par(bg = "white")
+
+persp(seq(1,365,length.out=50),seq(1,365,length.out=50),
+      eval.beta.est,
+      xlim=c(0,365),ylim=c(0,365),
+      zlim=c(min(eval.beta.est),max(eval.beta.est)),
+      phi=30,theta=30,expand=.5,
+      col="deepskyblue",ltheta=120,shade=0.5,
+      ticktype="detailed",xlab="t",ylab="s",
+      zlab="",r=40,d=.1,border="deepskyblue2",
+      main="Estimate of beta")
+```
+
+The interpretation of the curves of the estimates of $\beta$ is more complex, so it can not be identify a clear pattern but, as we can see, the local maxima and minima in this surface can be shown as the points where both variables relate the most. 
+
+With the bivariate functional slope, we can obtained the predicted values of the regression $(\widehat{r}_{i}(t))$ that are given by
+a linear combinations of the eigenfunctions $\widehat{u}_{1}, \ldots, \widehat{u}_{K_{m}}$.
+
+
+```{r fig.align="center"}
+pred.wind<- smooth.data.wind
+for (i in 1 : 73){
+  pred.wind$fd$coefs[,i] <- pcs.wind$meanfd$coefs
+  for (m in 1 : K.m){
+    aux <- sum(pcs.temp$scores[i,1:K.o] * b.mo[m,1:K.o])
+    pred.wind$fd$coefs[,i] <- pred.wind$fd$coefs[,i] + aux * pcs.wind$harmonics$coefs[,m]
+  }  
+}
+par(mfrow=c(1,2))
+
+plot(smooth.data.wind,
+     lty=1,lwd=2,col="deepskyblue2",
+     ylim=c(1,12),
+     main=c("Smoothed wind speeds with OLS", "and 21 Fourier basis"),
+     xlab=  "Daily observations",ylab="Average daily wind speed (m/s)")
+
+plot(pred.wind,
+     lty=1,lwd=2,col="deepskyblue2",
+     ylim=c(1,12),
+     main="Predicted wind speeds",
+     xlab=  "Daily observations",ylab="Average daily wind speed (m/s)")
+```
+As we can visualize in the previous plots, the predicted speeds for the wind generated by the temperature have a similar trend than the smoothed data of the registrations of the weather stations. However, we can see that the extreme behavior presented by some of the curves of the top does not reach as high values as the observed data. As well, we can see that curves that were presented with similar high wind speed over the year are now closer to the average behavior. Nevertheless, we can say that the predicted curves capture the form and the cycle of the wind speed for the Spanish weather stations in an overall view.
+
+In the following section, we will calculate the functional residuals which are also linear combinations of the eigenfunctions. As we can see, they show some of the extreme behaviors that are not contemplated by the model presenting some different curves at the top of the graph. Nevertheless, the fit seems to be adequate.
+
+Furthermore, the coefficient of determination $R^2$ resulted in 0.9466, which is a relatively high value, consequently, we can say that the wind speeds can be highly explained by the temperatures degrees. These results are expected considering that there is a coherence among high temperatures and its variability along the seasons and the speed of the wind for those locations. For example, in places surrounded by the ocean, it is much more probable that the wind speed is higher and that also has less variability in the temperature with high degrees along the year, in contrast, places with stable temperatures will present similar wind speeds in the seasons with certain peaks just in summer. Moreover, there will always be an error which is understandable considering that climate depends on different dynamic factors proper of each location. 
+```{r fig.align="center"}
+res.wind<- smooth.data.wind 
+res.wind $fd <- smooth.data.wind$fd - pred.wind$fd
+par(mfrow=c(1,1))
+
+plot(res.wind,
+     lty=1,lwd=2,col="deepskyblue2",
+     main="Residuals of the fit",
+     xlab=  "Daily observations",ylab="Average daily wind speed (m/s)")
+
+RSS <- sum(diag(inprod(res.wind$fd,res.wind$fd)))
+TSS <- sum(diag(inprod(smooth.data.wind$fd,smooth.data.wind$fd)))
+R2 <- 1-RSS/TSS
+R2
+```

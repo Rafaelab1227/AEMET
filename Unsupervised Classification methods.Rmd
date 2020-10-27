@@ -1,0 +1,346 @@
+---
+title: "Unsupervised Classification Methods for AEMET Data"
+author: "Rafaela Becerra"
+output:
+  html_document:
+    number_sections: yes
+subtitle: Assignment 10
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# Aemet Data
+## Load packages
+
+```{r message=FALSE}
+library(fda)
+library(fda.usc)
+library(corrplot)
+library(kableExtra)
+library(leaflet)
+```
+
+## Load data set
+```{r }
+data(aemet)
+data.temp<- t(aemet$temp$data)
+```
+
+## Unsupervised classification methods.
+
+First, we have to smooth the data. Considering that in previous assignments we got that the best $K$ was equal to 21, we will perform the smoothing based on this number of fourier basis for the data of the temperature average daily measures of the Spanish stations.
+
+Fourier basis
+```{r}
+fourier.basis <- create.fourier.basis(rangeval=c(0,365),nbasis=21)
+```
+
+Smooth temperature data
+```{r fig.align="center"}
+smooth.data.temp <- smooth.basis(argvals=1:365,y=data.temp,fdParobj=fourier.basis)
+
+plot(smooth.data.temp,
+     lty=1,lwd=2,col="chartreuse3",
+     main="Smoothing temperature data with 21 Fourier basis functions",
+     xlab="Daily observations",
+     ylab="Average temperature (Celsius degrees)")
+```
+
+### Methods based on basis expansions
+
+The first type of unsupervised methods that we will perform is the one based on basis expansions, which carry out unsupervised classification on the set of coefficients $\widehat{c}_{i 1}, \ldots, \widehat{c}_{i k},$ for $i=1, \ldots, n$, considering that distances between the functional observations will resemble the distances between the coefficients of the basis functions.
+
+The clustering procedures that will be use are:
+
+- Partitional clustering: K-means and PAM algorithms.
+- Hierarchical clustering: Agglomerative algorithm with average linkage.
+- Model-based clustering: M-clust.
+
+Additionally, we will be using the average silhouette for the partitional and
+hierarchical clustering, and for the Model-based the BIC to compare the performance of the methods, where the higher the value of the average silhouette width and the fewer the number of negative
+points, the better the method clustering performance. Conversely, in the case of the BIC, we will be looking for the biggest measure of the metric -BIC.  
+
+Next, we present the coefficients of the basis expansions. As we can see in the pairs plot, the data is grouped and some observations appear to be outliers. The first and second basis expansions are dividing the points into three groups: one denoted by just one observation, a big group in the middle, and a small group at the extreme. Conversely, the third one presents a more uniform distribution of the points, the other basis replicate these patterns.  
+
+Recall that the results showed a clear outlier that could be identified for the temperature data set which corresponds to the Navacerrada weather station. These results are expected, considering that Navacerrada is located in the mountains at 1200 mt of altitude and presents a different climate than the rest of the stations taking into account that the weather does not get to higher temperatures throughout the year. On the other hand, we saw a group of curves with really high temperatures all along the year.
+
+```{r fig.align="center", fig.width=10, fig.height=10}
+X <- t(smooth.data.temp$fd$coefs)
+kable(X, "html") %>%
+  kable_styling()%>%
+  scroll_box(width = "100%", height = "400px")
+
+pairs(X,pch=19,col="chartreuse3",main="Coefficients of the basis expansions")
+```
+
+#### Kmeans
+
+This method will map the data into the clusters based on the nearest mean of the distance of each observation to each group. For identifying the optimal group partition we will use the Elbow Curve method (WSS), which will denote a bend at the $k$ that is the best. In this case, we can see that $k=5$ will be useful as a partition point. Consequently, we try $G=5$, 1000 iterations, and 100 initial solutions.
+
+```{r fig.align="center"}
+library("factoextra")
+fviz_nbclust(X,kmeans,method="silhouette",k.max=10)
+kmeans.X <- kmeans(X,centers=5,iter.max=1000, nstart=100)
+```
+
+The following plots present the resulting solution after a comparison of the 100 final solutions. As we can see in the pairs plot, we can easily identify that there are groups of observations with the same color located at the extremes and that there are just a few basis that show mixes in the data points, reflecting a clear grouping trend. Moreover, we can confirm that there is a group of observations which behavior differs from the rest. In this case, are colored in purple, and, based on previous assignments, we know that these curves correspond to zones where the temperatures are higher all along the year. 
+
+In the second plot, we can see in a clear way the clustering performance. The curves have been divided in an expected pattern, considering that the purple ones are those which average daily temperature remains the same all over the year, and, conversely, we see in blue zones which have greater temperature variances along the seasons but who will not reach as high temperatures as the orange or green ones. Additionally, the pink set is formed by those who have a more stable trend that the past group, presenting less rough variations throughout the seasons, but lower temperatures than the purple ones.
+
+Furthermore, the third plot presents the average silhoutte measure which is equal to 0.55, considering that the larger value is given for the fifth cluster that contains the purple curves with extreme behavior. 
+
+```{r fig.align="center", fig.width=10, fig.height=10}
+colors.kmeans.X <- c("green","orange","pink","blue","purple")[kmeans.X$cluster]
+pairs(X,pch=19,col=colors.kmeans.X,main="kmeans solution with the coefficients of the basis expansions")
+plot(smooth.data.temp,lty=1,lwd=2,col=colors.kmeans.X,main="kmeans solution with the coefficients of the basis expansions",xlab="Day",ylab="Temperature")
+library("cluster")
+sil.kmeans.X <- silhouette(kmeans.X$cluster,dist(X,"euclidean"))
+plot(sil.kmeans.X,col=c("green","orange","pink","blue","purple"))
+```
+
+In the following plot, we present a map representation of the final clusterization with this method. 
+
+```{r fig.align="center",fig.width=9.5}
+# MAPS basic
+coordinates <- matrix(c(aemet$df$longitude,aemet$df$latitude), nrow=73, ncol=2)
+rownames(coordinates) <- aemet$df$name
+colnames(coordinates) <- c("Longitude", "Latitude")
+  
+#MAP GGPLOT ICONS
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = colors.kmeans.X
+)
+
+map <- leaflet() %>%
+  addTiles() %>%
+  addAwesomeMarkers(lng = coordinates[,1],
+             lat = coordinates[,2],
+             popup = aemet$df$name,
+             icon=icons)
+map
+```
+
+As the results show, this partition seems to be really accurate considering that it is, in fact, dividing the data into zones and partition the curves of the stations based on their geographical location, which can be understandable considering that the temperatures are highly related to the zone and being affected by its latitude, terrain, and altitude, as well as nearby water bodies and their currents. As seen, there is a distinction among the stations located in the north which are the pink curves, and as said, present some lower and more stable temperatures; the green ones in the center with higher temperatures and changes over the seasons; the blue ones located in the central mountain area with the lowest temperatures and changes throughout the year; the orange ones located near the coast and presenting higher temperatures. Lastly, we see there are just two stations on the Canary Islands that have been assigned to the blue and orange groups, we see that these are Izana and Tenerife/Los Rodeos, which in fact, unlike the other stations they are located in the middle of the territory and are not so close to the sea, consequently, it is understandable that they are considered as curves that have a behavior similar to the other groups rather than to the purple group which contains locations with more extreme temperatures. 
+
+#### PAM
+
+The PAM is is a clustering algorithm similat to k-means which stands for “partition around medoids” and will attempt to minimize the distance between a point and a point
+designated as the center of that cluster,  but conversely to k-means, these  center points or medoids can be used with arbitrary distances. As before, we calculate the $k$ with the average silhouette. The plot suggests the presence of 5 clusters, so we try $G=5$ uusing the manhattan metric for the calculation of the distances.
+
+
+```{r fig.align="center"}
+fviz_nbclust(X,cluster::pam,method="silhouette",k.max=10)
+pam.X <- pam(X,k=5,metric="manhattan",stand=FALSE)
+```
+
+Next, we present a pair plot of the cluster group basis expansion coefficients, a plot with the functional smoothed curves of the temperature daily average measures for the Spanish Stations and the silhoutte resulting plot. 
+
+If we compare the results to the ones obtained by the k-means method, we see that the average silhouette is smaller, which denotes that the first method presented a better clusterization. Moreover, we see some resembles, we have adjusted the colors to the group past behaviour, and we can see that now we have almost the same division for the curves mainting the zone clusterization based on a geographical consideration. 
+
+```{r fig.align="center", fig.width=10, fig.height=10}
+colors.pam.X <- c("pink","blue","green","orange","purple")[pam.X$cluster]
+pairs(X,pch=19,col=colors.pam.X,
+      main="PAM solution with the coefficients of the basis expansions")
+plot(smooth.data.temp,
+     lty=1,lwd=2,
+     col=colors.pam.X,main="PAM solution with the coefficients of the basis expansions",xlab="Day",ylab="Temperature")
+sil.pam.X <- silhouette(pam.X$clustering,dist(X,"manhattan"))
+plot(sil.pam.X,col=c("pink","blue","green","orange","purple"))
+```
+
+By taking a look at the map representation of the clusterization, we can identify that we have a mixture between the pink and orange group, considering that Tarifa it is not presented as part of the west cost group and Tenerife/Los Rodeos is also part of the pink group.Furthermore, we can say that it is a good partition considering that we are taking into account the manhattan metric for calculating the dissimilarities between object and their closest selected object, which differs from the past method, being a good sign that it resembles to the past solution.
+```{r fig.align="center",fig.width=9.5}
+#MAP GGPLOT ICONS
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = colors.pam.X
+)
+
+map <- leaflet() %>%
+  addTiles() %>%   
+  addAwesomeMarkers(lng = coordinates[,1],
+             lat = coordinates[,2],
+             popup = aemet$df$name,
+             icon=icons)
+map
+```
+
+#### Agglomerative hierarchical clustering
+
+The third method that we will be using is the agglomerative hierarchical clustering which starts by treating each object as a single cluster and next it will merge clusters successively until all clusters have been merged into one big cluster containing all objects. In this case, it will calculate the average distance between clusters before merging them, and based on this measure the linkage will occur.
+
+First, we calculate the distances between the coefficients with the Manhattan metric that will take into account the potential outliers and present a dendrogram that suggests the presence of two big clusters where the second one is formed by two ramifications, one with a small group of two observations and another one with two major groups. In this case, the $k$ presents a different optimal partition in contrast to the other methods, but recall that for both the $k=2$ was the second-best option. We will try $G=2$ to see if the big division presents a coherent clusterization of the data.
+
+
+```{r fig.align="center",fig.width=6, fig.height=6}
+dist.X <- daisy(X,metric="manhattan",stand=FALSE)
+average.X <- hclust(dist.X,method="average")
+average.X.plot <- as.dendrogram(average.X)
+
+par(cex=0.3, mar=c(5, 8, 3, 0))
+plot(average.X.plot, xlab="", ylab="", main="", sub="", axes=FALSE)
+rect.hclust(average.X,k=2,border="green")
+
+par(cex=1)
+title(main="Average linkage")
+axis(2)
+
+
+```
+
+As the results show, this partition is separating the curves into one group that it is formed by the curves with extreme high temperatures and the other one with the rest of the curves. Now, we see that the avergare silhouette is 0.5 which is lower than the one given by the k-means clusterization, consequently, this remains to be the best one obtained. 
+
+```{r fig.align="center", fig.width=10, fig.height=10}
+colors.average.X <- c("green","orange")[cutree(average.X,2)]
+pairs(X,pch=19,col=colors.average.X,main="Hierarchical clustering solution with the coefficients of the basis expansions")
+plot(smooth.data.temp,lty=1,lwd=2,col=colors.average.X,main="Hierarchical clustering solution with the coefficients of the basis expansions",xlab="Day",ylab="Temperature")
+sil.average.X <- silhouette(cutree(average.X,2),dist(X,"euclidean"))
+plot(sil.average.X,col=c("green","orange"))
+```
+
+If we locate in the map the cluster curves, we can see that the orange group contains the same 7 curves that were purple in the last two methods and which correspond to records from the Stations located in the Canary Islands that are closed to the sea, and the second group is formed by the rest of the curves in Spain and the two stations Izana and Tenerife/Los Rodeos, which actually are not located as close to the sea as the others. This is a simple but effective partition that gives a general idea of the behavior of the Stations separating the ones with extreme temperatures throughout the year.
+```{r fig.align="center",fig.width=9.5}
+#MAP GGPLOT ICONS
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = colors.average.X
+)
+
+map <- leaflet() %>%
+  addTiles() %>%   
+  addAwesomeMarkers(lng = coordinates[,1],
+             lat = coordinates[,2],
+             popup = aemet$df$name,
+             icon=icons)
+map
+```
+
+#### Model based clustering or MClust
+
+The model-based clustering method or MClust, which will model the data as a Gaussian finite mixture with different covariance structures and different numbers of mixture components, so it considers the data is coming from a distribution that is mixture of two or more clusters. 
+
+We compute the value of the BIC for the all possible models with maximum number of components equal to 10, and as seen the optimal number of $G$ is denoted to be $7$ with the highest -BIC. Then, the Mclust will be selecting a model with 7 clusters in which the covariance matrices are ellipsoidal and with the same eigenvectors. 
+
+```{r fig.align="center"}
+library(mclust)
+BIC.X <- mclustBIC(X,G=1:10)
+BIC.X
+plot(BIC.X)
+Mclust.X <- Mclust(X,x=BIC.X)
+summary(Mclust.X)
+?mclustModelNames
+```
+
+```{r fig.align="center", fig.width=10, fig.height=10}
+colors.Mclust.X <- c("pink","blue","green","orange","purple","red","gray")[Mclust.X$classification]
+pairs(X,pch=19,col=colors.Mclust.X,
+      main="MClust solution with the coefficients of the basis expansions")
+
+plot(smooth.data.temp,
+     lty=1,lwd=2,col=colors.Mclust.X,
+     main="MClust solution with the coefficients of the basis expansions",
+     xlab="Day",ylab="Temperature")
+```
+
+```{r fig.align="center",fig.width=9.5}
+#MAP GGPLOT ICONS
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = colors.Mclust.X
+)
+
+map <- leaflet() %>%
+  addTiles() %>%   
+  addAwesomeMarkers(lng = coordinates[,1],
+             lat = coordinates[,2],
+             popup = aemet$df$name,
+             icon=icons)
+map
+```
+
+As we can see, this method presents a different partition than K-means and PAM, if we take a look at the map, we can see that the seven clusters are based on geographical patterns but excepting the case of Tarifa which is located far from the rest of the pink curves; Granada which correspond to the blue group; and Izana which has been catalog as one group as its own. These three cases are understandable, considering that Izana presented a different behavior than the other Stations in the Canary Islands given that it does not reach as high temperatures as the rest. Moreover, Tarifa presents some higher temperatures than the rest of its closest Station because it is closely located to the sea; and, both stations of Granada present lower temperatures considering that both are located in higher zones resambling more to the Stations in the north. Additionally, this solution presents a clear separation of the west coast and east coast stations that it was not present before, also, there is a new red group that it is formed by stations that were part of the center blue group, consequently, we are facing a more detail partition than in the rest of the methods.
+
+### k-medoids
+
+Now, we present the k-medoids which implements a variant of the k-means algorithm for functional data that makes use of functional depths for defining group centroids. Consequently, first we 
+transform the temperatures in the `fda` format to the `fda.usc` format.
+
+Recall the `kmeans.fd` will use by default the Fraiman and Muniz depth to compute the set of depths and then compute the sample functional median after trimming with $\alpha=0.05$.
+
+We will define $G=5$ considering that it seamed to be a good partition to define the behavior of the stations based on zones where they are located. As we can see, there is a distintion of the curves with the highest temperatures, as well as a separation of the curved with the lowest temperatures and a division of the rest into three groups denoted by the level of temperatures thay they reach.   
+
+```{r fig.align="center"}
+set.seed(1)
+tt <- 1 : 365
+temp.smooth <- eval.fd(tt,smooth.data.temp$fd)
+fdataobj.temp <- fdata(t(temp.smooth),tt)
+
+kmeans.temp <- kmeans.fd(fdataobj.temp,ncl=5,cluster.size=0,max.iter=500)
+colors.kmeansfd <- c("green","orange","purple","blue","pink")[kmeans.temp$cluster]
+par(mfrow=c(1,1))
+plot(smooth.data.temp,lty=1,lwd=2,col=colors.kmeansfd,
+     main="Functional kmeans solution",xlab="Day",ylab="Temperature")
+```
+
+```{r fig.align="center",fig.width=9.5}
+#MAP GGPLOT ICONS
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = colors.kmeansfd
+)
+
+map <- leaflet() %>%
+  addTiles() %>%   
+  addAwesomeMarkers(lng = coordinates[,1],
+             lat = coordinates[,2],
+             popup = aemet$df$name,
+             icon=icons)
+map
+```
+
+Above, we present a map of the stations clustered using this method. As we can see, there are some similarities to past methods. We can see that the group in purple remains the same with the Stations of The Canary Islands excepting Tenerife/Los Rodeos and Izana. Moreover, we see that there is a partition among the Stations that are located on the coast next to the sea, as the north and east ones are part of the orange group and the southwest formed another group. Furthermore, we can see that there is a unique curve in the center that forms the pink group which, actually, corresponds to Nevacerrada, which was identified to be an outlier considering that presents the lowest temperatures of the set. Furthermore, we can see that there is a group in blue that contains a lot of curves located in the north and which present some stable pattern of changes throughout the year based on the seasons. 
+
+Additionally, we are presenting again the k-medoids with $G=2$ to see the performance of the method. As we can see, the partition presented differs from the one given by the Agglomerative hierarchical clustering, where the separation showed a defined group of extreme behavior curves distinguish from the rest that maintains higher temperatures throughout the year. Now, this method presents a partition considering in one group the Stations with higher temperatures and another group with the ones with fewer temperatures, but without taking into account the variability over the seasons. In the curve plot, we can observe that the smoothed curves in green are just almost all of the ones located at the top, and in the orange group lay the ones with fewer temperatures located at the bottom.
+
+Finally, when comparing to the past methods considering both cases, we can say that this partition considers the behavior of the curves, separating them in a better way based on the temperatures achieved, but it does not partition them well if we consider a more detailed behavior taking into account the variability throughout the year, as we could see with other methods like k-means, PAM and MClust algorithms that, actually, captured some characteristics of the groups and achieved a clear distinction of the zones. Consequently, by taking into account the average silhouette, we can say that k-means with five partitions, and by taking the BIC metric, the Mclust with 7 partitions could be the best methods to partition the Station records to define zones based on their temperatures considering the degrees that they achieved in a daily average as well as the variability presented throughout the seasons. 
+
+```{r fig.align="center"}
+kmeans.temp <- kmeans.fd(fdataobj.temp,ncl=2,cluster.size=0,max.iter=500)
+colors.kmeansfd <- c("green","orange")[kmeans.temp$cluster]
+par(mfrow=c(1,1))
+plot(smooth.data.temp,lty=1,lwd=2,col=colors.kmeansfd,
+     main="Functional kmeans solution",xlab="Day",ylab="Temperature")
+```
+
+```{r fig.align="center",fig.width=9.5}
+#MAP GGPLOT ICONS
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = colors.kmeansfd
+)
+
+library(leaflet)
+map <- leaflet() %>%
+  addTiles() %>%   
+  addAwesomeMarkers(lng = coordinates[,1],
+             lat = coordinates[,2],
+             popup = aemet$df$name,
+             icon=icons)
+map
+```
